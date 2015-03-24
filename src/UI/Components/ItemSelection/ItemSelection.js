@@ -15,7 +15,9 @@ define(function(require)
 	/**
 	 * Dependencies
 	 */
+	var jQuery      = require('Utils/jquery');
 	var DB          = require('DB/DBManager');
+	var SkillInfo   = require('DB/Skills/SkillInfo');
 	var Client      = require('Core/Client');
 	var Renderer    = require('Renderer/Renderer');
 	var UIManager   = require('UI/UIManager');
@@ -45,11 +47,14 @@ define(function(require)
 		this.list  = this.ui.find('.list:first');
 		this.index = 0;
 
-		this.draggable();
+		this.draggable(this.ui.find('.head'));
 
 		// Click Events
 		this.ui.find('.ok').click( this.selectIndex.bind(this) );
-		this.ui.find('.cancel').click( this.remove.bind(this) );
+		this.ui.find('.cancel').click(function(){
+			this.index = -1;
+			this.selectIndex();
+		}.bind(this) );
 
 		// Bind events
 		this.ui
@@ -70,25 +75,25 @@ define(function(require)
 		var i, count;
 		var item, it, file, name;
 
+		ItemSelection.list.empty();
 
 		for (i = 0, count = list.length; i < count; ++i) {
 			if (isSkill) {
-				continue;
-				//	var SkillInfo = require('DB/SkillInfo');
-				//file = SkillInfo[ID].Name;
-				//name = SkillInfo[ID].SkillName;
+				item = SkillInfo[list[i]];
+				file = item.Name;
+				name = item.SkillName;
 			}
 			else {
-				item = Inventory.getItemByIndex(list[i].index);
+				item = Inventory.getItemByIndex(list[i]);
 				it   = DB.getItemInfo( item.ITID );
-				file = it.identifiedResourceName;
+				file = item.IsIdentified ? it.identifiedResourceName : it.unidentifiedResourceName;
 				name = item.IsIdentified ? it.identifiedDisplayName : it.unidentifiedDisplayName;
 			}
 
-			addElement( DB.INTERFACE_PATH + 'item/' + file + '.bmp', list[i].index, name);
+			addElement( DB.INTERFACE_PATH + 'item/' + file + '.bmp', list[i], name);
 		}
 
-		this.setIndex(list[0].index);
+		this.setIndex(list[0]);
 	};
 
 
@@ -104,7 +109,7 @@ define(function(require)
 		ItemSelection.list.append(
 			'<div class="item" data-index="'+ index +'">' +
 				'<div class="icon"></div>' +
-				'<span class="name">' + name + '</span>' +
+				'<span class="name">' + jQuery.escape(name) + '</span>' +
 			'</div>'
 		);
 
@@ -146,6 +151,17 @@ define(function(require)
 	ItemSelection.onRemove = function onRemove()
 	{
 		this.index = 0;
+	};
+
+
+	/**
+	 * Set new window name
+	 *
+	 * @param {string} title
+	 */
+	ItemSelection.setTitle = function setTitle( title )
+	{
+		this.ui.find('.head .text').text( title );
 	};
 
 

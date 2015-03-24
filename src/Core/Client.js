@@ -9,10 +9,20 @@
  * @author Vincent Thibault
  */
 
-define( [ 'Utils/Executable',  'Network/PacketVerManager',  './Thread',  './MemoryManager', 'Utils/Texture', 'Utils/WebGL'],
-function(        Executable,                  PACKETVER,       Thread,      Memory,                Texture,         WebGL)
+define(function( require )
 {
 	'use strict';
+
+
+	// Load dependencies
+	var Executable    = require('Utils/Executable');
+	var Texture       = require('Utils/Texture');
+	var WebGL         = require('Utils/WebGL');
+	var Configs       = require('./Configs');
+	var Thread        = require('./Thread');
+	var Memory        = require('./MemoryManager');
+	var PACKETVER     = require('Network/PacketVerManager');
+	var getModule     = require;
 
 
 	/**
@@ -24,19 +34,18 @@ function(        Executable,                  PACKETVER,       Thread,      Memo
 	function init( files )
 	{
 		var i, count;
-
-		window.ROConfig = window.ROConfig || {};
+		var packetver    = Configs.get('packetver');
+		var remoteClient = Configs.get('remoteClient');
 
 		function OnDate(date){
 			// Avoid errors
 			if (date > 20000000) {
-				PACKETVER.min = date;
-				PACKETVER.max = date;
+				PACKETVER.value = date;
 			}
 		}
 
 		// Find executable and set the packetver
-		if (!ROConfig.packetver || String(ROConfig.packetver).match(/^(executable|auto)$/i)) {
+		if (!packetver || String(packetver).match(/^executable$/i)) {
 			for (i = 0, count = files.length; i < count; ++i) {
 				if (Executable.isROExec(files[i])) {
 					Executable.getDate(files[i], OnDate);
@@ -44,14 +53,13 @@ function(        Executable,                  PACKETVER,       Thread,      Memo
 				}
 			}
 		}
-		else if (typeof ROConfig.packetver === 'number') {
-			PACKETVER.min = ROConfig.packetver;
-			PACKETVER.max = ROConfig.packetver;
+		else if (typeof packetver === 'number') {
+			PACKETVER.value = packetver;
 		}
 
 		// GRF Host config
-		if (ROConfig.remoteClient) {
-			Thread.send( 'SET_HOST', ROConfig.remoteClient );
+		if (remoteClient) {
+			Thread.send( 'SET_HOST', remoteClient);
 		}
 
 		// Save full client
@@ -71,6 +79,7 @@ function(        Executable,                  PACKETVER,       Thread,      Memo
 		var last_tick   = Date.now();
 		var list        = [];
 		var i, count;
+		var temporaryStorage;
 
 		if (files.length) {
 			// Progressbar
@@ -134,12 +143,28 @@ function(        Executable,                  PACKETVER,       Thread,      Memo
 			}
 		}
 
-		// Initialize client files (load GRF, etc).
-		Thread.send( 'CLIENT_INIT', {
-			files:   list,
-			grfList: ROConfig.grfList || 'DATA.INI',
-			save:    !!ROConfig.saveFiles
-		}, Client.onFilesLoaded );
+		// Get temporary storage info at main thread, the worker can't access it.
+		// https://github.com/vthibault/roBrowser/issues/110
+		temporaryStorage = navigator.temporaryStorage || navigator.webkitTemporaryStorage || {
+			queryUsageAndQuota: function(callback) {
+				callback(0, 0);
+			}
+		};
+
+		temporaryStorage.queryUsageAndQuota(function(used, remaining) {
+			var quota = {
+				used: used,
+				remaining: remaining
+			};
+
+			// Initialize client files (load GRF, etc).
+			Thread.send( 'CLIENT_INIT', {
+				files:     list,
+				grfList:   Configs.get('grfList') || 'DATA.INI',
+				save:    !!Configs.get('saveFiles'),
+				quota:     quota
+			}, Client.onFilesLoaded );
+		});
 	}
 
 
@@ -221,8 +246,8 @@ function(        Executable,                  PACKETVER,       Thread,      Memo
 		function callback(data, error, input)
 		{
 			var i, count, j, size;
-			var gl, frames, texture, textures, layers, palette;
-			var precision, size;
+			var gl, frames, texture, layers, palette;
+			var precision;
 
 			if (data && !error) {
 				switch (input.filename.substr(-3)){
@@ -235,7 +260,7 @@ function(        Executable,                  PACKETVER,       Thread,      Memo
 
 					// Load str textures
 					case 'str':
-						gl     = require('Renderer/Renderer').getContext();
+						gl     = getModule('Renderer/Renderer').getContext();
 						layers = data.layers;
 
 						for (i = 0; i < data.layernum; ++i) {
@@ -256,7 +281,7 @@ function(        Executable,                  PACKETVER,       Thread,      Memo
 						return;
 
 					case 'spr':
-						gl     = require('Renderer/Renderer').getContext();
+						gl     = getModule('Renderer/Renderer').getContext();
 						frames = data.frames;
 						count  = frames.length;
 
@@ -287,7 +312,7 @@ function(        Executable,                  PACKETVER,       Thread,      Memo
 
 					// Build palette
 					case 'pal':
-						gl      = require('Renderer/Renderer').getContext();
+						gl      = getModule('Renderer/Renderer').getContext();
 						texture = gl.createTexture();
 						palette = new Uint8Array(data);
 

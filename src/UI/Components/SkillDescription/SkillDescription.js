@@ -16,7 +16,7 @@ define(function(require)
 	 * Dependencies
 	 */
 	var jQuery      = require('Utils/jquery');
-	var SkillDB     = require('DB/SkillDescription');
+	var SkillDB     = require('DB/Skills/SkillDescription');
 	var Renderer    = require('Renderer/Renderer');
 	var KEYS        = require('Controls/KeyEventHandler');
 	var Mouse       = require('Controls/MouseEventHandler');
@@ -30,6 +30,12 @@ define(function(require)
 	 * Create Component
 	 */
 	var SkillDescription = new UIComponent( 'SkillDescription', htmlText, cssText );
+
+
+	/**
+	* SkillDescription unique id
+	*/
+	SkillDescription.uid = -1;
 
 
 	/**
@@ -59,6 +65,15 @@ define(function(require)
 
 
 	/**
+	 * Once removed
+	 */
+	SkillDescription.onRemove = function onRemove()
+	{
+		this.uid = -1; // reset uid
+	};
+
+
+	/**
 	 * Initialize UI
 	 */
 	SkillDescription.init = function init()
@@ -78,6 +93,7 @@ define(function(require)
 	 */
 	SkillDescription.setSkill = function setSkill( id )
 	{
+		this.uid = id;
 		this.ui.find('.content').text(SkillDB[id] || '...');
 
 		this.ui.css({
@@ -86,7 +102,7 @@ define(function(require)
 		});
 	};
 
-	
+
 	/**
 	 * Create component and export it
 	 */

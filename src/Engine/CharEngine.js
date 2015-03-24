@@ -9,43 +9,28 @@
  * @author Vincent Thibault
  */
 
-define([
-	'require',
-	'Utils/jquery',
-	'DB/DBManager',
-	'Audio/SoundManager',
-	'Engine/SessionStorage',
-	'Engine/MapEngine',
-	'Network/NetworkManager',
-	'Network/PacketStructure',
-	'Network/PacketVerManager',
-	'Renderer/Renderer',
-	'UI/UIManager',
-	'UI/Background',
-	'UI/Components/CharSelect/CharSelect',
-	'UI/Components/CharCreate/CharCreate',
-	'UI/Components/WinPopup/WinPopup',
-	'UI/Components/InputBox/InputBox'
-], function(
-	require,
-	jQuery,
-	DB,
-	Sound,
-	Session,
-	MapEngine,
-	Network,
-	PACKET,
-	PACKETVER,
-	Renderer,
-	UIManager,
-	Background,
-	CharSelect,
-	CharCreate,
-	WinPopup,
-	InputBox
-)
+define(function( require )
 {
 	'use strict';
+
+
+	// Load modules
+	var jQuery     = require('Utils/jquery');
+	var DB         = require('DB/DBManager');
+	var Events     = require('Core/Events');
+	var Sound      = require('Audio/SoundManager');
+	var BGM        = require('Audio/BGM');
+	var Session    = require('Engine/SessionStorage');
+	var MapEngine  = require('Engine/MapEngine');
+	var Network    = require('Network/NetworkManager');
+	var PACKET     = require('Network/PacketStructure');
+	var PACKETVER  = require('Network/PacketVerManager');
+	var UIManager  = require('UI/UIManager');
+	var Background = require('UI/Background');
+	var CharSelect = require('UI/Components/CharSelect/CharSelect');
+	var CharCreate = require('UI/Components/CharCreate/CharCreate');
+	var InputBox   = require('UI/Components/InputBox/InputBox');
+	var getModule  = require;
 
 
 	/**
@@ -65,6 +50,8 @@ define([
 	 */
 	function init( server )
 	{
+		BGM.play('01.mp3');
+
 		// Storing variable
 		_server = server;
 
@@ -124,7 +111,7 @@ define([
 	 */
 	function onExitRequest()
 	{
-		require('Engine/LoginEngine').reload();
+		getModule('Engine/LoginEngine').reload();
 	}
 
 
@@ -219,7 +206,7 @@ define([
 			InputBox.remove();
 			_ui_box.remove();
 			_overlay.detach();
-			clearTimeout(_TimeOut);
+			Events.clearTimeout(_TimeOut);
 			onDeleteAnswer({ ErrorCode: -2});
 		}
 
@@ -293,7 +280,7 @@ define([
 			_ctx.fillStyle = 'rgb(255,255,0)';
 			_ctx.fillText( percent + '%' ,  ( _width - _ctx.measureText( percent+'%').width ) * 0.5 , 12  );
 
-			_TimeOut = setTimeout( render, 30);
+			_TimeOut = Events.setTimeout( render, 30);
 		}
 	}
 
@@ -347,7 +334,7 @@ define([
 		var pkt;
 
 		// Old Packet required stats
-		if (PACKETVER.min < 20120307) {
+		if (PACKETVER.value < 20120307) {
 			pkt = new PACKET.CH.MAKE_CHAR();
 			pkt.Str  = Str;
 			pkt.Agi  = Agi;

@@ -9,10 +9,25 @@
  * @author Vincent Thibault
  */
 
-define([ 'require', 'Core/Context', 'Utils/BinaryReader',   './PacketVerManager', './PacketVersions', './PacketRegister', './PacketGuess', './PacketCrypt', './SocketHelpers/ChromeSocket', './SocketHelpers/JavaSocket', './SocketHelpers/WebSocket'],
-function( require,        Context,         BinaryReader,       PACKETVER,            PacketVersions,     PacketRegister,     PacketGuess,     PacketCrypt,                   ChromeSocket,                   JavaSocket,                   WebSocket)
+define(function( require )
 {
 	'use strict';
+
+
+	// Load dependencies
+	var Configs        = require('Core/Configs');
+	var Context        = require('Core/Context');
+	var BinaryReader   = require('Utils/BinaryReader');
+	var PACKETVER      = require('./PacketVerManager');
+	var PacketVersions = require('./PacketVersions');
+	var PacketRegister = require('./PacketRegister');
+	var PacketCrypt    = require('./PacketCrypt');
+	var ChromeSocket   = require('./SocketHelpers/ChromeSocket');
+	var JavaSocket     = require('./SocketHelpers/JavaSocket');
+	var WebSocket      = require('./SocketHelpers/WebSocket');
+	var TCPSocket      = require('./SocketHelpers/TCPSocket');
+	var NodeSocket     = require('./SocketHelpers/NodeSocket');
+	var getModule      = require;
 
 
 	/**
@@ -33,7 +48,7 @@ function( require,        Context,         BinaryReader,       PACKETVER,       
 	 * Buffer to use to read packets
 	 * @var buffer
 	 */
-	var _save_buffer         = null;
+	var _save_buffer = null;
 
 
 	/**
@@ -49,7 +64,6 @@ function( require,        Context,         BinaryReader,       PACKETVER,       
 		this.struct   = struct;
 		this.size     = size;
 		this.callback = null;
-		this.guess    = null;
 	}
 
 
@@ -72,15 +86,25 @@ function( require,        Context,         BinaryReader,       PACKETVER,       
 	function connect( host, port, callback, isZone)
 	{
 		var socket, Socket;
-		var proxy = ROConfig.socketProxy || null;
+		var proxy = Configs.get('socketProxy', null);
 
-		// Native socket
+		// Chrome App
 		if (Context.Is.APP) {
 			Socket = ChromeSocket;
 		}
 
+		// Firefox OS App
+		else if (TCPSocket.isSupported()) {
+			Socket = TCPSocket;
+		}
+
+		// node-webkit
+		else if (NodeSocket.isSupported()) {
+			Socket = NodeSocket;
+		}
+
 		// Web Socket with proxy
-		else if (ROConfig.socketProxy) {
+		else if (proxy) {
 			Socket = WebSocket;
 		}
 	
@@ -185,21 +209,6 @@ function( require,        Context,         BinaryReader,       PACKETVER,       
 
 
 	/**
-	 * Register a function for a packet to guess the procole version
-	 *
-	 * @param {object} packet
-	 * @param {function} callback to guess PACKETVER
-	 */
-	function guessPacketVer( packet, callback)
-	{
-		if (!packet.id) {
-			throw new Error('NetworkManager::GuessPacketVer() - Packet not yet register "'+ packet.name +'"');
-		}
-		Packets.list[ packet.id ].guess = callback;
-	}
-
-
-	/**
 	 * Force to read from a used version for the next receive data
 	 *
 	 * @param callback
@@ -291,11 +300,6 @@ function( require,        Context,         BinaryReader,       PACKETVER,       
 
 			offset += length;
 
-			// Try to guess the packet version
-			if (packet.guess && PACKETVER.min !== PACKETVER.max) {
-				packet.guess( length );
-			}
-
 			// Not enough bytes, need to wait for new buffer to read more.
 			if (offset > fp.length) {
 				offset       = fp.tell() - (packet.size < 0 ? 4 : 2);
@@ -308,8 +312,14 @@ function( require,        Context,         BinaryReader,       PACKETVER,       
 			}
 
 			// Parse packet
-			var data = new packet.struct(fp, offset);
-			console.log( '%c[Network] Recv:', 'color:#900090', data, packet.callback ? '' : '(no callback)'  );
+			if (!packet.instance) {
+				packet.instance = new packet.struct(fp, offset);
+			}
+			else {
+				packet.struct.call(packet.instance, fp, offset);
+			}
+
+			console.log( '%c[Network] Recv:', 'color:#900090', packet.instance, packet.callback ? '' : '(no callback)'  );
 
 			// Support for "0" type
 			if (length) {
@@ -318,7 +328,7 @@ function( require,        Context,         BinaryReader,       PACKETVER,       
 
 			// Call controller
 			if (packet.callback) {
-				packet.callback(data);
+				packet.callback(packet.instance);
 			}
 		}
 
@@ -341,7 +351,7 @@ function( require,        Context,         BinaryReader,       PACKETVER,       
 				clearInterval(_socket.ping);
 			}
 
-			require('UI/UIManager').showErrorBox('Disconnected from Server.');
+			getModule('UI/UIManager').showErrorBox('Disconnected from Server.');
 		}
 
 		if (idx !== -1) {
@@ -428,7 +438,6 @@ function( require,        Context,         BinaryReader,       PACKETVER,       
 		this.send           = send;
 		this.setPing        = setPing;
 		this.connect        = connect;
-		this.guessPacketVer = guessPacketVer;
 		this.hookPacket     = hookPacket;
 		this.close          = close;
 		this.read           = read;
@@ -451,9 +460,6 @@ function( require,        Context,         BinaryReader,       PACKETVER,       
 		for (i = 0; i < count; ++i) {
 			registerPacket( keys[i], PacketRegister[ keys[i] ] );
 		}
-
-		// Guess packetver
-		PacketGuess.call(this);
 
 		this.utils = {
 			longToIP: utilsLongToIP

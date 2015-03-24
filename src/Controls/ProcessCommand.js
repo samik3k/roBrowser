@@ -7,30 +7,31 @@
  *
  * @author Vincent Thibault
  */
-define([
-	'require',
-	'DB/DBManager',            'DB/Emotions',
-	'Audio/BGM',               'Audio/SoundManager',
-	'Engine/SessionStorage',
-	'Network/PacketStructure', 'Network/NetworkManager',
-	'Preferences/Controls',    'Preferences/Audio',       'Preferences/Map',    'Preferences/Camera'
-],
-function(
-	require,
-	DB,                  Emotions,
-	BGM,                 Sound,
-	Session,
-	PACKET,              Network,
-	ControlPreferences,  AudioPreferences,  MapPreferences,  CameraPreferences
-) {
+define(function( require )
+{
 	'use strict';
+
+
+	// Load dependencies
+	var DB                 = require('DB/DBManager');
+	var Emotions           = require('DB/Emotions');
+	var BGM                = require('Audio/BGM');
+	var Sound              = require('Audio/SoundManager');
+	var Session            = require('Engine/SessionStorage');
+	var PACKET             = require('Network/PacketStructure');
+	var Network            = require('Network/NetworkManager');
+	var ControlPreferences = require('Preferences/Controls');
+	var AudioPreferences   = require('Preferences/Audio');
+	var MapPreferences     = require('Preferences/Map');
+	var CameraPreferences  = require('Preferences/Camera');
+	var getModule          = require;
 
 
 	/**
 	 * Process command
 	 */
 	return function processCommand( text ){
-		var pkt;
+		var pkt, matches;
 		var cmd = text.split(' ')[0];
 
 		switch (cmd) {
@@ -59,13 +60,13 @@ function(
 				return;
 
 			case 'effect':
-				this.addText( DB.msgstringtable[23 + MapPreferences.effect], this.TYPE.INFO );
+				this.addText( DB.getMessage(23 + MapPreferences.effect), this.TYPE.INFO );
 				MapPreferences.effect = !MapPreferences.effect;
 				MapPreferences.save();
 				return;
 
 			case 'mineffect':
-				this.addText( DB.msgstringtable[687 + MapPreferences.mineffect], this.TYPE.INFO );
+				this.addText( DB.getMessage(687 + MapPreferences.mineffect), this.TYPE.INFO );
 				MapPreferences.mineffect = !MapPreferences.mineffect;
 				MapPreferences.save();
 				return;
@@ -144,7 +145,7 @@ function(
 				return;
 
 			case 'where':
-				var currentMap = require('Renderer/MapRenderer').currentMap;
+				var currentMap = getModule('Renderer/MapRenderer').currentMap;
 				this.addText(
 					DB.getMapName(currentMap) + '(' + currentMap + ') : ' + Math.floor(Session.Entity.position[0]) + ', ' + Math.floor(Session.Entity.position[1]),
 					this.TYPE.INFO
@@ -157,12 +158,41 @@ function(
 				Network.sendPacket(pkt);
 				return;
 
+			case 'memo':
+				pkt = new PACKET.CZ.REMEMBER_WARPPOINT();
+				Network.sendPacket(pkt);
+				return;
+
 			case 'chat':
-				require('UI/Components/ChatRoomCreate/ChatRoomCreate').show();
+				getModule('UI/Components/ChatRoomCreate/ChatRoomCreate').show();
 				return;
 
 			case 'q':
-				require('UI/Components/ChatRoom/ChatRoom').remove();
+				getModule('UI/Components/ChatRoom/ChatRoom').remove();
+				return;
+
+			case 'leave':
+				getModule('Engine/MapEngine/Group').onRequestLeave();
+				return;
+
+			case 'invite':
+				matches = text.match(/^invite\s+(")?([^"]+)(")?/);
+				if (matches && matches[2]) {
+					getModule('Engine/MapEngine/Group').onRequestInvitation(0, matches[2]);
+					return;
+				}
+				break;
+
+			case 'organize':
+				matches = text.match(/^organize\s+(")?([^"]+)(")?/);
+				if (matches && matches[2]) {
+					getModule('Engine/MapEngine/Group').onRequestCreationEasy(matches[2]);
+					return;
+				}
+				break;
+
+			case 'hi':
+				getModule('Engine/MapEngine/Friends').sayHi();
 				return;
 		}
 

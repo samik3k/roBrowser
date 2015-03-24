@@ -17,9 +17,11 @@ define(function(require)
 	 */
 	var jQuery             = require('Utils/jquery');
 
+	var Configs            = require('Core/Configs');
 	var Client             = require('Core/Client');
 	var Thread             = require('Core/Thread');
 	var Memory             = require('Core/MemoryManager');
+	var Events             = require('Core/Events');
 
 	var KEYS               = require('Controls/KeyEventHandler');
 
@@ -65,8 +67,9 @@ define(function(require)
 		var ui = this.ui;
 
 		Thread.hook('THREAD_READY', function(){
-			if (window.ROConfig && ROConfig.remoteClient) {
-				Thread.send( 'SET_HOST', ROConfig.remoteClient );
+			var remoteClient = Configs.get('remoteClient');
+			if (remoteClient) {
+				Thread.send( 'SET_HOST', remoteClient);
 				Client.init([]);
 			}
 		});
@@ -113,6 +116,12 @@ define(function(require)
 			ui.find('#previous'),
 			ui.find('#next')
 		);
+
+		// Renderer is not rendering, causing issue in src/UI/UIComponents.js#212
+		// Trigger manually the event.
+		setTimeout(function(){
+			Events.process(100);
+		}, 10);
 	};
 
 
@@ -410,8 +419,7 @@ define(function(require)
 		}
 
 		var i, count;
-		var type, attr;
-		var reg = /(.*\\)/;
+		var type, reg = /(.*\\)/;
 
 		i     = 0;
 		count = list.length;
@@ -506,6 +514,11 @@ define(function(require)
 		// Stored action to know if user act during the process
 		var actionID = _actionID + 0;
 
+		function cleanUp()
+		{
+			URL.revokeObjectURL(this.src);
+		}
+
 		function process()
 		{
 			// Stop here if we change page.
@@ -535,11 +548,11 @@ define(function(require)
 
 					// Display image
 					if (url) {
-						self.find('img:first').attr('src', url );
-
+						var img = self.find('img:first').get(0);
 						if (url.match(/^blob\:/)){
-							URL.revokeObjectURL(url);
+							img.onload = img.onerror = img.onabort = cleanUp;
 						}
+						img.src = url;
 					}
 
 					// Fetch next range.
@@ -751,11 +764,11 @@ define(function(require)
 			target:        element,
 			type:          ROBrowser.TYPE.FRAME,
 			application:   ROBrowser.APP.MODELVIEWER,
-			development:   ROConfig.development,
+			development:   Configs.get('development', false),
 			api:           true,
 			width:         500,
 			height:        400,
-			version:       ROConfig.version || ''
+			version:       Configs.get('version', '')
 		});
 
 		// Ressource sharing
@@ -848,11 +861,11 @@ define(function(require)
 			target:        element,
 			type:          ROBrowser.TYPE.FRAME,
 			application:   ROBrowser.APP.STRVIEWER,
-			development:   ROConfig.development,
+			development:   Configs.get('development', false),
 			api:           true,
 			width:         400,
 			height:        400,
-			version:       ROConfig.version || ''
+			version:       Configs.get('version', '')
 		});
 
 		// Ressource sharing
@@ -942,11 +955,11 @@ define(function(require)
 			target:        element,
 			type:          ROBrowser.TYPE.FRAME,
 			application:   ROBrowser.APP.MAPVIEWER,
-			development:   ROConfig.development,
+			development:   Configs.get('development', false),
 			api:           true,
 			width:         600,
 			height:        480,
-			version:       ROConfig.version || ''
+			version:       Configs.get('version', '')
 		});
 
 		// Ressource sharing

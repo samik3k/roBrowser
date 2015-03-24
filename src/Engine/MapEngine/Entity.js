@@ -16,9 +16,11 @@ define(function( require )
 	/**
 	 * Load dependencies
 	 */
-	var SkillId       = require('DB/SkillId');
-	var SkillInfo     = require('DB/SkillInfo');
+	var SkillId       = require('DB/Skills/SkillConst');
+	var SkillInfo     = require('DB/Skills/SkillInfo');
+	var StatusConst   = require('DB/Status/StatusConst');
 	var Emotions      = require('DB/Emotions');
+	var Events        = require('Core/Events');
 	var Session       = require('Engine/SessionStorage');
 	var Network       = require('Network/NetworkManager');
 	var PACKET        = require('Network/PacketStructure');
@@ -26,7 +28,7 @@ define(function( require )
 	var Altitude      = require('Renderer/Map/Altitude');
 	var EntityManager = require('Renderer/EntityManager');
 	var Entity        = require('Renderer/Entity/Entity');
-	var Effects       = require('Renderer/Effects');
+	var EffectManager = require('Renderer/EffectManager');
 	var Damage        = require('Renderer/Effects/Damage');
 	var MagicTarget   = require('Renderer/Effects/MagicTarget');
 	var LockOnTarget  = require('Renderer/Effects/LockOnTarget');
@@ -69,6 +71,13 @@ define(function( require )
 		if (entity) {
 			entity.remove( pkt.type );
 		}
+
+		// Show escape menu
+		if (pkt.GID === Session.Entity.GID && pkt.type === 1) {
+			Escape.ui.show();
+			Escape.ui.find('.savepoint').show();
+			Escape.ui.find('.graphics, .sound, .hotkey').hide();
+		}
 	}
 
 
@@ -96,7 +105,7 @@ define(function( require )
 	 */
 	function onEntityStopMove( pkt )
 	{
-		var entity = EntityManager.get(pkt.GID);
+		var entity = EntityManager.get(pkt.AID);
 		if (entity) {
 
 			if (Math.abs(entity.position[0] - pkt.xPos) > 1.0 ||
@@ -228,11 +237,14 @@ define(function( require )
 
 			// Damage
 			case 0:  // regular
+			case 4:  // absorbed
 			case 8:  // double attack
 			case 9:  // endure
 			case 10: // critital
 				if (dstEntity) {
-					if (pkt.damage && pkt.action !== 9) { // only if damage and do not have endure
+					// only if damage and do not have endure
+					// and damage isn't absorbed (healing)
+					if (pkt.damage && pkt.action !== 9 && pkt.action !== 4) {
 						dstEntity.setAction({
 							delay:  Renderer.tick + pkt.attackMT,
 							action: dstEntity.ACTION.HURT,
@@ -255,7 +267,8 @@ define(function( require )
 					if (target) {
 						switch (pkt.action) {
 
-							// regular damage
+							// regular damage (and endure)
+							case 9:
 							case 0:
 								Damage.add( pkt.damage, target, Renderer.tick + pkt.attackMT );
 								break;
@@ -343,10 +356,6 @@ define(function( require )
 					repeat: true,
 					play:   true
 				});
-				break;
-
-			// type=04 TODO: reflected/absorbed damage?
-			case 4:
 				break;
 		}
 	}
@@ -495,8 +504,23 @@ define(function( require )
 				}
 				break;
 
-			case 1: entity.head        = pkt.value; break;
-			case 2: entity.weapon      = pkt.value; break;
+			case 1:
+				entity.head = pkt.value;
+				break;
+
+			case 2:
+				// In packet PACKET.ZC.SPRITE_CHANGE2, weapon and shield values are
+				// stored in a long value (uint16 and uint16 in uint32)
+				// source: https://github.com/rathena/rathena/blob/master/src/map/clif.c#L3162
+				if (pkt instanceof PACKET.ZC.SPRITE_CHANGE2) {
+					entity.shield = pkt.value >> 16;
+					entity.weapon = pkt.value & 0x00FFFF;
+				}
+				else {
+					entity.weapon = pkt.value;
+				}
+				break;
+
 			case 3: entity.accessory   = pkt.value; break;
 			case 4: entity.accessory2  = pkt.value; break;
 			case 5: entity.accessory3  = pkt.value; break;
@@ -520,26 +544,8 @@ define(function( require )
 		var srcEntity = EntityManager.get(pkt.srcAID);
 		var dstEntity = EntityManager.get(pkt.targetAID);
 
-		if (!srcEntity) {
-			return;
-		}
-
-		srcEntity.setAction({
-			action: srcEntity.ACTION.SKILL,
-			frame:  0,
-			repeat: false,
-			play:   true,
-			next: {
-				action: srcEntity.ACTION.IDLE,
-				frame: 0,
-				repeat: true,
-				play: true,
-				next: false
-			}
-		});
-
 		// Only mob to don't display skill name ?
-		if (srcEntity.objecttype !== Entity.TYPE_MOB) {
+		if (srcEntity && srcEntity.objecttype !== Entity.TYPE_MOB) {
 			srcEntity.dialog.set(
 				( (SkillInfo[pkt.SKID] && SkillInfo[pkt.SKID].SkillName ) || 'Unknown Skill' ) + ' !!',
 				'white'
@@ -547,19 +553,18 @@ define(function( require )
 		}
 
 		if (dstEntity) {
-			if (dstEntity !== srcEntity) {
+			if (srcEntity && dstEntity !== srcEntity) {
 				srcEntity.lookTo( dstEntity.position[0], dstEntity.position[1] );
 			}
 
-			// Don't know why Gravity did this...
-			if (pkt.SKID === SkillId.AL_HEAL) {
+			// In healing skill, the level parameter stored the healed value
+			if (pkt.SKID === SkillId.AL_HEAL ||
+			    pkt.SKID === SkillId.AB_HIGHNESSHEAL ||
+			    pkt.SKID === SkillId.AB_CHEAL) {
 				Damage.add( pkt.level, dstEntity, Renderer.tick, Damage.TYPE.HEAL );
 			}
-			else {
-				// skill_lvl = heal.
-			}
 
-			Effects.spamSkill( pkt.SKID, pkt.targetAID );
+			EffectManager.spamSkill( pkt.SKID, pkt.targetAID );
 		}
 	}
 
@@ -571,25 +576,7 @@ define(function( require )
 	 */
 	function onSkillAppear( pkt )
 	{
-		var srcEntity = EntityManager.get(pkt.creatorAID);
-
-		if (srcEntity) {
-			srcEntity.setAction({
-				action: srcEntity.ACTION.SKILL,
-				frame:  0,
-				repeat: false,
-				play:   true,
-				next: {
-					action: srcEntity.ACTION.READYFIGHT,
-					frame:  0,
-					repeat: true,
-					play:   true,
-					next:  false
-				}
-			});
-		}
-
-		Effects.spamSkillZone( pkt.job, pkt.xPos, pkt.yPos, pkt.AID );
+		EffectManager.spamSkillZone( pkt.job, pkt.xPos, pkt.yPos, pkt.AID );
 	}
 
 
@@ -600,7 +587,7 @@ define(function( require )
 	 */
 	function onSkillDisapear( pkt )
 	{
-		Effects.remove( null, pkt.AID );
+		EffectManager.remove( null, pkt.AID );
 	}
 
 
@@ -619,8 +606,15 @@ define(function( require )
 			pkt.attackMT = Math.max(   1, pkt.attackMT );
 			srcEntity.attack_speed = pkt.attackMT;
 
+
+			if (srcEntity.objecttype !== Entity.TYPE_MOB) {
+				srcEntity.dialog.set( ( (SkillInfo[pkt.SKID] && SkillInfo[pkt.SKID].SkillName ) || 'Unknown Skill' ) + ' !!' );
+			}
+
+			var action = (SkillInfo[pkt.SKID] && SkillInfo[pkt.SKID].ActionType) || 'SKILL';
+
 			srcEntity.setAction({
-				action: srcEntity.ACTION.SKILL,
+				action: srcEntity.ACTION[action],
 				frame:  0,
 				repeat: false,
 				play:   true,
@@ -629,62 +623,62 @@ define(function( require )
 					frame:  0,
 					repeat: true,
 					play:   true,
-					next:  false
+					next:   false
 				}
 			});
-
-			if (srcEntity.objecttype !== Entity.TYPE_MOB) {
-				srcEntity.dialog.set( ( (SkillInfo[pkt.SKID] && SkillInfo[pkt.SKID].SkillName ) || 'Unknown Skill' ) + ' !!' );
-			}
 		}
 
 		if (dstEntity) {
 			var target = pkt.damage ? dstEntity : srcEntity;
 			var i;
 
-			if (pkt.damage) {
-				dstEntity.setAction({
-					action: dstEntity.ACTION.HURT,
-					frame:  0,
-					repeat: false,
-					play:   true,
-					next: {
-						action: dstEntity.ACTION.READYFIGHT,
-						frame:  0,
-						repeat: true,
-						play:   true,
-						next:   false
-					}
-				});
+			if (pkt.damage && target) {
 
-				// Combo
-				if (target) {
-					for (i = 0; i<pkt.count; ++i) {
-						Effects.spamSkillHit( pkt.SKID, dstEntity.GID, Renderer.tick + pkt.attackMT + (200 * i));
+				var addDamage = function(i) {
+					return function addDamageClosure() {
+						var isAlive = dstEntity.action !== dstEntity.ACTION.DIE;
+						var isCombo = target.objecttype !== Entity.TYPE_PC && pkt.count > 1;
 
-						Damage.add(
-							Math.floor( pkt.damage / pkt.count ),
-							target,
-							Renderer.tick + pkt.attackMT + ( 200 * i )
-						);
+						EffectManager.spamSkillHit( pkt.SKID, dstEntity.GID, Renderer.tick);
+						Damage.add( pkt.damage / pkt.count, target, Renderer.tick);
 
 						// Only display combo if the target is not entity and
 						// there are multiple attacks
-						if (target.objecttype !== Entity.TYPE_PC && pkt.count > 1) {
+						if (isCombo) {
 							Damage.add(
-								Math.floor( pkt.damage / pkt.count * (i+1) ),
+								pkt.damage / pkt.count * (i+1),
 								target,
-								Renderer.tick + pkt.attackMT + ( 200 * i ), //TOFIX: why 200 ?
+								Renderer.tick, 
 								Damage.TYPE.COMBO | ( (i+1) === pkt.count ? Damage.TYPE.COMBO_FINAL : 0 )
 							);
 						}
-					}
+
+						if (isAlive) {
+							dstEntity.setAction({
+								action: dstEntity.ACTION.HURT,
+								frame:  0,
+								repeat: false,
+								play:   true,
+								next: {
+									action: dstEntity.ACTION.READYFIGHT,
+									frame:  0,
+									repeat: true,
+									play:   true,
+									next:   false
+								}
+							});
+						}
+					};
+				};
+
+				for (i = 0; i < pkt.count; ++i) {
+					Events.setTimeout( addDamage(i), pkt.attackMT + (200 * i)); //TOFIX: why 200 ?
 				}
 			}
 		}
 
 		if (srcEntity && dstEntity) {
-			Effects.spamSkill( pkt.SKID, dstEntity.GID, null, Renderer.tick + pkt.attackMT);
+			EffectManager.spamSkill( pkt.SKID, dstEntity.GID, null, Renderer.tick + pkt.attackMT);
 		}
 	}
 
@@ -718,14 +712,14 @@ define(function( require )
 		if (pkt.delayTime) {
 			Sound.play('effect/ef_beginspell.wav');
 			srcEntity.cast.set( pkt.delayTime );
-		}
 
-		srcEntity.setAction({
-			action: srcEntity.ACTION.SKILL,
-			frame:  0,
-			repeat: false,
-			play:   false
-		});
+			srcEntity.setAction({
+				action: srcEntity.ACTION.SKILL,
+				frame:  0,
+				repeat: false,
+				play:   false
+			});
+		}
 
 		// Only mob to don't display skill name ?
 		if (srcEntity.objecttype !== Entity.TYPE_MOB) {
@@ -739,14 +733,14 @@ define(function( require )
 			srcEntity.lookTo( dstEntity.position[0], dstEntity.position[1] );
 
 			if (pkt.delayTime) {
-				Effects.add(new LockOnTarget( dstEntity, Renderer.tick, Renderer.tick + pkt.delayTime), srcEntity.GID);
+				EffectManager.add(new LockOnTarget( dstEntity, Renderer.tick, Renderer.tick + pkt.delayTime), srcEntity.GID);
 			}
 		}
 		else if (pkt.xPos && pkt.yPos) {
 			srcEntity.lookTo( pkt.xPos, pkt.yPos );
 
 			if (pkt.delayTime) {
-				Effects.add(new MagicTarget( pkt.SKID, pkt.xPos, pkt.yPos, Renderer.tick + pkt.delayTime), srcEntity.GID);
+				EffectManager.add(new MagicTarget( pkt.SKID, pkt.xPos, pkt.yPos, Renderer.tick + pkt.delayTime), srcEntity.GID);
 			}
 		}
 	}
@@ -764,8 +758,8 @@ define(function( require )
 			entity.cast.clean();
 
 			// Cancel effects
-			Effects.remove(LockOnTarget, entity.GID);
-			Effects.remove(MagicTarget, entity.GID);
+			EffectManager.remove(LockOnTarget, entity.GID);
+			EffectManager.remove(MagicTarget, entity.GID);
 		}
 	}
 
@@ -785,7 +779,9 @@ define(function( require )
 
 		// TODO: add other status
 		switch (pkt.index) {
-			case 184:// SI_CLAIRVOYANCE
+
+			// Maya purple card
+			case StatusConst.CLAIRVOYANCE:
 				if (entity === Session.Entity) {
 					Session.intravision = pkt.state;
 					EntityManager.forEach(function(entity){
@@ -794,7 +790,29 @@ define(function( require )
 				}
 				break;
 
-			default:
+			// Show cart (in future)
+			case StatusConst.ON_PUSH_CART:
+				if (entity === Session.Entity) {
+					Session.hasCart = pkt.state;
+				}
+				break;
+
+			// Cast a skill, TODO: add progressbar in shortcut
+			case StatusConst.POSTDELAY:
+				entity.setAction({
+					action: entity.ACTION.SKILL,
+					frame:  0,
+					repeat: false,
+					play:   true,
+					next: {
+						action: entity.ACTION.READYFIGHT,
+						frame:  0,
+						repeat: true,
+						play:   true,
+						next:   false
+					}
+				});
+				break;
 		}
 
 		// Modify icon
@@ -832,63 +850,63 @@ define(function( require )
 	{
 		var entity;
 
-		switch (pkt.constructor.name) {
-			case 'PACKET_ZC_STORE_ENTRY':
-				entity = EntityManager.get( pkt.makerAID );
-				if (entity) {
-					entity.room.create(
-						pkt.storeName,
-						pkt.makerAID,
-						entity.room.constructor.Type.BUY_SHOP,
-						true
-					);
+		if (pkt instanceof PACKET.ZC.STORE_ENTRY) {
+			entity = EntityManager.get( pkt.makerAID );
+			if (entity) {
+				entity.room.create(
+					pkt.storeName,
+					pkt.makerAID,
+					entity.room.constructor.Type.BUY_SHOP,
+					true
+				);
+			}
+			return;
+		}
+
+		if (pkt instanceof PACKET.ZC.BUYING_STORE_ENTRY) {
+			entity = EntityManager.get( pkt.makerAID );
+			if (entity) {
+				entity.room.create(
+					pkt.storeName,
+					pkt.makerAID,
+					entity.room.constructor.Type.SELL_SHOP,
+					true
+				);
+			}
+			return;
+		}
+
+		if (pkt instanceof PACKET.ZC.ROOM_NEWENTRY) {
+			entity = EntityManager.get( pkt.AID );
+			if (entity) {
+
+				var type  = entity.room.constructor.Type.PUBLIC_CHAT;
+				var title = pkt.title + '('+ pkt.curcount +'/'+ pkt.maxcount +')';
+
+				switch (pkt.type) {
+					case 0: // password
+						type = entity.room.constructor.Type.PRIVATE_CHAT;
+						break;
+
+					case 1: break; // public
+					case 2: break; // arena (npc waiting room)
+
+					case 3: // PK zone - non clickable ???
+						title = pkt.title; // no user limit
+						break;
 				}
-				break;
-
-			case 'PACKET_ZC_BUYING_STORE_ENTRY':
-				entity = EntityManager.get( pkt.makerAID );
-				if (entity) {
-					entity.room.create(
-						pkt.storeName,
-						pkt.makerAID,
-						entity.room.constructor.Type.SELL_SHOP,
-						true
-					);
-				}
-				break;
-
-			case 'PACKET_ZC_ROOM_NEWENTRY':
-				entity = EntityManager.get( pkt.AID );
-				if (entity) {
-
-					var type  = entity.room.constructor.Type.PUBLIC_CHAT;
-					var title = pkt.title + '('+ pkt.curcount +'/'+ pkt.maxcount +')';
-
-					switch (pkt.type) {
-						case 0: // password
-							type = entity.room.constructor.Type.PRIVATE_CHAT;
-							break;
-
-						case 1: break; // public
-						case 2: break; // arena (npc waiting room)
-
-						case 3: // PK zone - non clickable ???
-							title = pkt.title; // no user limit
-							break;
-					}
 					
-					entity.room.title = pkt.title;
-					entity.room.limit = pkt.maxcount;
-					entity.room.count = pkt.curcount;
+				entity.room.title = pkt.title;
+				entity.room.limit = pkt.maxcount;
+				entity.room.count = pkt.curcount;
 
-					entity.room.create(
-						title,
-						pkt.roomID,
-						type,
-						true
-					);
-				}
-				break;
+				entity.room.create(
+					title,
+					pkt.roomID,
+					type,
+					true
+				);
+			};
 		}
 	}
 
@@ -951,6 +969,7 @@ define(function( require )
 		Network.hookPacket( PACKET.ZC.STOPMOVE,                     onEntityStopMove );
 		Network.hookPacket( PACKET.ZC.NOTIFY_ACT,                   onEntityAction );
 		Network.hookPacket( PACKET.ZC.NOTIFY_ACT2,                  onEntityAction );
+		Network.hookPacket( PACKET.ZC.NOTIFY_ACT3,                  onEntityAction );
 		Network.hookPacket( PACKET.ZC.NOTIFY_CHAT,                  onEntityTalk );
 		Network.hookPacket( PACKET.ZC.NPC_CHAT,                     onEntityTalkColor );
 		Network.hookPacket( PACKET.ZC.ACK_REQNAME,                  onEntityIdentity );
@@ -988,5 +1007,6 @@ define(function( require )
 		Network.hookPacket( PACKET.ZC.FASTMOVE,                     onEntityFastMove);
 		Network.hookPacket( PACKET.ZC.RESURRECTION,                 onEntityResurect);
 		Network.hookPacket( PACKET.ZC.EMOTION,                      onEntityEmotion);
+		Network.hookPacket( PACKET.ZC.NOTIFY_MONSTER_HP,            onEntityLifeUpdate);
 	};
 });

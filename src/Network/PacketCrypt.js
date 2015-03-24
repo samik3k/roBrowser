@@ -17,9 +17,9 @@
  * @author Vincent Thibault
  */
 
-define(function()
+define(['Core/Configs'], function( Configs )
 {
-	"use strict";
+	'use strict';
 
 
 	/**
@@ -86,12 +86,17 @@ define(function()
 		20130626: [0x38F453EF,0x6A040FD8,0x65BD6668],
 		20130703: [0x4FF90E23,0x0F1432F2,0x4CFA1EDA],
 		20130807: [0x7E241DE0,0x5E805580,0x3D807D80],
+		20130814: [0x23A23148,0x0C41420E,0x53785AD7],
 		20131218: [0x6A596301,0x76866D0E,0x32294A45],
 		20131223: [0x631C511C,0x111C111C,0x111C111C],
 		20131230: [0x611B7097,0x01F957A1,0x768A0FCB],
 		20140115: [0x63224335,0x0F3A1F27,0x6D217B24],
 		20140205: [0x63DC7BDC,0x7BDC7BDC,0x7BDC7BDC],
-		20140305: [0x116763F2,0x41117DAC,0x7FD13C45]
+		20140305: [0x116763F2,0x41117DAC,0x7FD13C45],
+		20140402: [0x15D3271C,0x004D725B,0x111A3A37],
+		20140416: [0x04810281,0x42814281,0x42814281],
+		20141016: [0x2DFF467C,0x444B37EE,0x2C1B634F],
+		20141022: [0x290551EA,0x2B952C75,0x2D67669B]
 	};
 
 
@@ -108,7 +113,7 @@ define(function()
 	// Check for support and kick out Safari bug
 	if (Math.imul && Math.imul(0xffffffff, 5) === -5) {
 		imul = Math.imul;
-	} 
+	}
 	else {
 		imul = function imul(a, b) {
 			var ah = (a >>> 16) & 0xffff;
@@ -127,40 +132,44 @@ define(function()
 	 */
 	function Init()
 	{
+		var packetKeys;
+
 		_available = false;
+		packetKeys = Configs.get('packetKeys');
 
-		if (ROConfig.packetKeys) {
+		if (!packetKeys) {
+			return;
+		}
 
-			// Custom keys
-			if (ROConfig.packetKeys instanceof Array) {
-				_available = true;
-				_keys.set(ROConfig.packetKeys);
+		// Custom keys
+		if (packetKeys instanceof Array) {
+			_available = true;
+			_keys.set(packetKeys);
+		}
+
+		else {
+			var date, key;
+
+			// Define a date or use the defined packetver ?
+			if (typeof packetKeys === 'number') {
+				date = packetKeys;
 			}
-
 			else {
-				var date, key;
-
-				// Define a date or use the defined packetver ?
-				if (typeof ROConfig.packetKeys === "number") {
-					date = ROConfig.packetKeys;
-				}
-				else {
-					date = ROConfig.packetver;
-				}
-
-				// Get the available keys
-				for (key in KeysTable) {
-					if (date >= key) {
-						_available = true;
-						_keys.set(KeysTable[key]);
-					}
-				}
-
+				date = Configs.get('packetver');
 			}
 
-			if (_available) {
-				console.log( "%c[PACKETCRYPT] Encrypt sent packets using keys", "color:#007000", _keys );
+			// Get the available keys
+			for (key in KeysTable) {
+				if (date >= key) {
+					_available = true;
+					_keys.set(KeysTable[key]);
+				}
 			}
+
+		}
+
+		if (_available) {
+			console.log( '%c[PACKETCRYPT] Encrypt sent packets using keys', 'color:#007000', _keys );
 		}
 	}
 

@@ -7,10 +7,16 @@
  *
  * @author Vincent Thibault
  */
-define(['Utils/WebGL', 'Utils/Texture', 'Utils/gl-matrix', 'DB/SkillId', 'Core/Client', 'Renderer/Effects', 'Renderer/Map/Altitude'],
-function(      WebGL,         Texture,          glMatrix,       SkillId,        Client,            Effects,                Altitude) {
+define(function( require ) {
 
 	'use strict';
+
+
+	// Load dependencies
+	var WebGL    = require('Utils/WebGL');
+	var Texture  = require('Utils/Texture');
+	var glMatrix = require('Utils/gl-matrix');
+	var Client   = require('Core/Client');
 
 
 	/**
@@ -187,7 +193,7 @@ function(      WebGL,         Texture,          glMatrix,       SkillId,        
 		]), gl.STATIC_DRAW );
 
 		Client.loadFile('data/texture/effect/lockon128.tga', function(buffer) {
-			Texture.load(buffer, function(success) {
+			Texture.load(buffer, function() {
 				var ctx = this.getContext('2d');
 				ctx.save();
 				ctx.translate(  this.width/2,  this.height/2 );

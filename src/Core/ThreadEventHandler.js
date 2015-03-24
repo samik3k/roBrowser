@@ -8,7 +8,6 @@
  * @author Vincent Thibault
  */
 
-
 importScripts('../Vendors/require.js');
 requirejs.config({
 	baseUrl: '../'
@@ -94,9 +93,13 @@ function(      FileManager,        FileSystem,           MapLoader )
 				});
 
 				// Saving full client
-				FileSystem.init( msg.data.files, msg.data.save );
+				FileSystem.init( msg.data.files, msg.data.save, msg.data.quota );
 				break;
 
+			// Files alias
+			case 'CLIENT_FILES_ALIAS':
+				FileManager.filesAlias = msg.data;
+				break;
 
 			// Get a file from client/grf
 			case 'GET_FILE':

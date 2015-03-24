@@ -16,13 +16,14 @@ define(function(require)
 	 * Dependencies
 	 */
 	var DB            = require('DB/DBManager');
-	var SkillInfo     = require('DB/SkillInfo');
+	var SkillInfo     = require('DB/Skills/SkillInfo');
 	var KEYS          = require('Controls/KeyEventHandler');
 	var Mouse         = require('Controls/MouseEventHandler');
 	var jQuery        = require('Utils/jquery');
 	var Renderer      = require('Renderer/Renderer');
 	var Entity        = require('Renderer/Entity/Entity');
 	var EntityManager = require('Renderer/EntityManager');
+	var Session       = require('Engine/SessionStorage');
 	var Controls      = require('Preferences/Controls');
 	var UIManager     = require('UI/UIManager');
 	var UIComponent   = require('UI/UIComponent');
@@ -33,6 +34,12 @@ define(function(require)
 	 * Create Announce component
 	 */
 	var SkillTargetSelection = new UIComponent( 'SkillTargetSelection' );
+
+
+	/**
+	 * Mouse can cross this UI
+	 */
+	SkillTargetSelection.mouseMode = UIComponent.MouseMode.CROSS;
 
 
 	/**
@@ -52,7 +59,7 @@ define(function(require)
 	/**
 	 * @var {number} target type (see constants)
 	 */
-	var _target = 0;
+	var _flag = 0;
 
 
 	/**
@@ -120,8 +127,8 @@ define(function(require)
 		events.unshift( events.pop() );
 
 		// Execute before *request move* / *request attack*
-		jQuery(Renderer.canvas).one('mousedown.targetselection', intersectEntity);
-		events = jQuery._data(Renderer.canvas, 'events').mousedown;
+		jQuery(window).one('mousedown.targetselection', intersectEntities);
+		events = jQuery._data(window, 'events').mousedown;
 		events.unshift( events.pop() );
 	};
 
@@ -146,7 +153,7 @@ define(function(require)
 	 */
 	SkillTargetSelection.onRemove = function onRemove()
 	{
-		jQuery(Renderer.canvas).off('mousedown.targetselection');
+		jQuery(window).off('mousedown.targetselection');
 
 		Cursor.blockMagnetism = false;
 		Cursor.freeze         = false;
@@ -171,14 +178,14 @@ define(function(require)
 	 */
 	SkillTargetSelection.set = function set( skill, target, description )
 	{
-		_target = target;
+		_flag = target;
 		_skill  = skill;
 
-		if (!_target) {
+		if (!_flag) {
 			return;
 		}
 
-		if (_target & (SkillTargetSelection.TYPE.PLACE|SkillTargetSelection.TYPE.TRAP)) {
+		if (_flag & (SkillTargetSelection.TYPE.PLACE|SkillTargetSelection.TYPE.TRAP)) {
 			Cursor.blockMagnetism = true;
 		}
 
@@ -224,50 +231,101 @@ define(function(require)
 	/**
 	 * Intersect entity when clicking
 	 */
-	function intersectEntity(event)
+	function intersectEntities(event)
 	{
 		SkillTargetSelection.remove();
 
+		if (!Mouse.intersect) {
+			return false;
+		}
+
+		// Only left click
 		if (event.which !== 1) {
 			return true;
 		}
 
-		if (_target & (SkillTargetSelection.TYPE.PLACE|SkillTargetSelection.TYPE.TRAP)) {
+		event.stopImmediatePropagation();
+
+		// Zone skill
+		if (_flag & (SkillTargetSelection.TYPE.PLACE|SkillTargetSelection.TYPE.TRAP)) {
 			SkillTargetSelection.onUseSkillToPos(_skill.SKID, _skill.level, Mouse.world.x, Mouse.world.y);
-			event.stopImmediatePropagation();
 			return false;
 		}
 
+		// Get entity
 		var entity = EntityManager.getOverEntity();
-		var target = 0;
 
-		if (entity) {
-			switch (entity.objecttype) {
-				case Entity.TYPE_MOB:
-					target = SkillTargetSelection.TYPE.ENEMY | SkillTargetSelection.TYPE.PET;
-					break;
-
-				case Entity.TYPE_PC:
-					target = SkillTargetSelection.TYPE.FRIEND;
-					break;
-
-				default:
-					break;
-			}
-
-			if (target & _target || KEYS.SHIFT || Controls.noshift) {
-				if (_target === SkillTargetSelection.TYPE.PET) {
-					SkillTargetSelection.onPetSelected(entity.GID);
-				}
-				else {
-					SkillTargetSelection.onUseSkillToId(_skill.SKID, _skill.level, entity.GID);
-				}
-			}
+		if (!entity) {
+			return false;
 		}
 
-		event.stopImmediatePropagation();
+		intersectEntity(entity);
 		return false;
 	}
+
+
+	/**
+	 * Intersect with an entity
+	 *
+	 * @param {object} entity
+	 */
+	function intersectEntity(entity)
+	{
+		var target = 0;
+
+		// Get target type
+		switch (entity.objecttype) {
+			case Entity.TYPE_MOB:
+				target = SkillTargetSelection.TYPE.ENEMY | SkillTargetSelection.TYPE.PET;
+				break;
+
+			case Entity.TYPE_PC:
+			case Entity.TYPE_HOM:
+			case Entity.TYPE_MERC:
+			case Entity.TYPE_ELEM:
+				target = SkillTargetSelection.TYPE.FRIEND;
+				break;
+
+			// Can't use skill on this type
+			// (warp, npc, items, effects...)
+			default:
+				return;
+		}
+
+		// This skill can't be casted on this type
+		if (!(target & _flag) && !KEYS.SHIFT && !Controls.noshift) {
+			return;
+		}
+
+		// Pet capture
+		if (_flag === SkillTargetSelection.TYPE.PET) {
+			SkillTargetSelection.onPetSelected(entity.GID);
+			return;
+		}
+
+		// Can't cast evil skill on your self
+		if ((_flag & SkillTargetSelection.TYPE.ENEMY) && entity === Session.Entity) {
+			return;
+		}
+
+		// Cast skill
+		SkillTargetSelection.onUseSkillToId(_skill.SKID, _skill.level, entity.GID);
+		return;
+	}
+
+
+	/**
+	 * Intersect with an entity ID
+	 * (used in party UI)
+	 */
+	SkillTargetSelection.intersectEntityId = function intersectEntityId(id)
+	{
+		var entity = EntityManager.get(id);
+		if (entity) {
+			intersectEntity(entity);
+		}
+	};
+
 
 
 	/**

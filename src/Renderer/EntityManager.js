@@ -7,10 +7,17 @@
  *
  * @author Vincent Thibault
  */
-define(['Engine/SessionStorage', './Entity/Entity', './SpriteRenderer', 'Controls/MouseEventHandler', 'Controls/KeyEventHandler'],
-function(       Session,                   Entity,     SpriteRenderer,            Mouse,                        KEYS )
+define(function( require )
 {
 	'use strict';
+
+
+	// Load dependencies
+	var Session        = require('Engine/SessionStorage');
+	var Entity         = require('./Entity/Entity');
+	var SpriteRenderer = require('./SpriteRenderer');
+	var Mouse          = require('Controls/MouseEventHandler');
+	var KEYS           = require('Controls/KeyEventHandler');
 
 
 	var _list = [];
@@ -23,6 +30,10 @@ function(       Session,                   Entity,     SpriteRenderer,          
 	 */
 	function getEntityIndex( gid )
 	{
+		if (gid < 0) {
+			return -1;
+		}
+
 		var i, count = _list.length;
 	
 		for (i = 0; i < count; ++i) {
@@ -103,13 +114,13 @@ function(       Session,                   Entity,     SpriteRenderer,          
 	 */
 	function free()
 	{
-		var count = _list.length;
+		var i, count = _list.length;
 
-		while (count--) {
-			_list[0].clean();
-			delete _list[0];   // better to clean directly ?
-			_list.splice(0,1); // Don't erase the first one.
+		for (i = 0; i < count; ++i) {
+			_list[i].clean();
 		}
+
+		_list.length = 0;
 	}
 
 

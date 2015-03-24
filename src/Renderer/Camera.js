@@ -7,18 +7,23 @@
  *
  * @author Vincent Thibault
  */
-define(['Controls/KeyEventHandler', 'Controls/MouseEventHandler', 'Preferences/Camera', 'Utils/gl-matrix'], function( KEYS, Mouse, Preferences, glMatrix )
+define(function( require )
 {
 	'use strict';
 
 	/**
 	 * Load dependencies
 	 */
-	var mat4              = glMatrix.mat4;
-	var mat3              = glMatrix.mat3;
-	var vec2              = glMatrix.vec2;
-	var vec3              = glMatrix.vec3;
-	var _position         = vec3.create();
+	var KEYS        = require('Controls/KeyEventHandler');
+	var Mouse       = require('Controls/MouseEventHandler');
+	var Events      = require('Core/Events');
+	var Preferences = require('Preferences/Camera');
+	var glMatrix    = require('Utils/gl-matrix');
+	var mat4        = glMatrix.mat4;
+	var mat3        = glMatrix.mat3;
+	var vec2        = glMatrix.vec2;
+	var vec3        = glMatrix.vec3;
+	var _position   = vec3.create();
 
 
 	/**
@@ -94,12 +99,6 @@ define(['Controls/KeyEventHandler', 'Controls/MouseEventHandler', 'Preferences/C
 	 */
 	Camera.MAX_ZOOM = 10;
 	
-	
-	/**
-	 * @var {boolean} timer status
-	 */
-	Camera.timerStatus = false;
-
 
 	/**
 	 * @var {number} Camera direction
@@ -166,19 +165,24 @@ define(['Controls/KeyEventHandler', 'Controls/MouseEventHandler', 'Preferences/C
 	/**
 	 * Save the camera settings
 	 */
-	Camera.save = function Save()
+	Camera.save = function SaveClosure()
 	{
-		if(this.timerStatus === false) {
-			this.timerStatus = true;
-			
-			setTimeout(function() {
-				Camera.timerStatus = false;
-				
-				Preferences.zoom = Camera.zoomFinal;
-				Preferences.save();
-			}, 3000); //Save camera settings after 3 seconds
+		var _pending = false;
+
+		function save() {
+			_pending         = false;
+			Preferences.zoom = Camera.zoomFinal;
+			Preferences.save();
 		}
-	}
+
+		return function saving() {
+			// Save camera settings after 3 seconds
+			if (!_pending) {
+				Events.setTimeout( save, 3000);
+				_pending = true;
+			}
+		};
+	}();
 
 
 	/**
@@ -197,7 +201,10 @@ define(['Controls/KeyEventHandler', 'Controls/MouseEventHandler', 'Preferences/C
 		}
 
 		// Check for double click (reset angle and zoom)
-		if (action.tick + 500 > tick) {
+		if (action.tick + 500 > tick &&
+		    Math.abs(action.x-Mouse.screen.x) < 10 && // Check the mouse position to avoid bug while rotating
+		    Math.abs(action.y-Mouse.screen.y) < 10) { // to fast the camera...
+
 			if (KEYS.SHIFT) {
 				this.angleFinal[0] = +this.range;
 			}

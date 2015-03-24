@@ -7,9 +7,17 @@
  *
  * @author Vincent Thibault
  */
-define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './EntityAction'], function( Client, DB, ShadowTable, MountTable, EntityAction )
+define(function( require )
 {
 	'use strict';
+
+
+	// Load dependencies
+	var Client       = require('Core/Client');
+	var DB           = require('DB/DBManager');
+	var ShadowTable  = require('DB/Monsters/ShadowTable');
+	var MountTable   = require('DB/Jobs/MountTable');
+	var EntityAction = require('./EntityAction');
 
 
 	/**
@@ -100,6 +108,9 @@ define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './Ent
 			job = this.costume;
 		}
 
+		// Resize character
+		this.xSize = this.ySize = DB.isBaby(job) ? 4 : 5;
+
 
 		this.files.shadow.size = job in ShadowTable ? ShadowTable[job] : 1.0;
 		path                   = this.isAdmin ? DB.getAdminPath(this._sex) : DB.getBodyPath( job, this._sex );
@@ -107,7 +118,7 @@ define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './Ent
 
 		// Define Object type based on its id
 		if (this.objecttype === Entity.TYPE_UNKNOWN) {
-			this.objecttype = (
+			var objecttype = (
 				job < 45   ? Entity.TYPE_PC   :
 				job < 46   ? Entity.TYPE_WARP :
 				job < 1000 ? Entity.TYPE_NPC  :
@@ -116,9 +127,13 @@ define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './Ent
 				job < 7000 ? Entity.TYPE_HOM  :
 				             Entity.TYPE_MERC
 			);
-		}
 
-		EntityAction.call(this);
+			// Clean up action frames
+			if (objecttype !== this.objecttype) {
+				this.objecttype = objecttype;
+				EntityAction.call(this);
+			}
+		}
 
 		// Invisible sprites
 		if (job === 111 || job === 139 || job === 45) {
@@ -170,7 +185,7 @@ define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './Ent
 			return;
 		}
 
-		this.files.body.pal = DB.getBodyPalPath( this._job, this._bodypalette, this._sex);
+		this.files.body.pal = DB.getBodyPalPath( this.job, this._bodypalette, this._sex);
 	}
 
 
@@ -183,7 +198,7 @@ define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './Ent
 	{
 		var path;
 
-		if (head <= 0) {
+		if (head < 0) {
 			return;
 		}
 
@@ -248,7 +263,7 @@ define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './Ent
 			switch (type) {
 				case 'weapon':
 				case 'shield':
-					path  = DB[func]( val, this._job, this._sex );
+					path  = DB[func]( val, this.job, this._sex );
 					break;
 
 				default:
@@ -264,7 +279,7 @@ define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './Ent
 
 				// Load weapon sound
 				if (type === 'weapon') {
-					this.weapon_sound = DB.getWeaponSound( val );
+					this.sound.attackFile = DB.getWeaponSound( val );
 				}
 
 				return;
@@ -279,7 +294,7 @@ define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './Ent
 
 					// Load weapon sound
 					if (type === 'weapon') {
-						_this.weapon_sound = DB.getWeaponSound( _val );
+						_this.attackFile = DB.getWeaponSound( _val );
 					}
 				},
 
@@ -287,7 +302,7 @@ define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './Ent
 				function(){
 					if (fallback && !final) {
 						_val = DB[fallback](val);
-						path = DB[func]( _val, _this._job, _this._sex );
+						path = DB[func]( _val, _this.job, _this._sex );
 						if (path) {
 							LoadView( path, true );
 						}
@@ -317,7 +332,7 @@ define(['Core/Client', 'DB/DBManager', 'DB/ShadowTable', 'DB/MountTable', './Ent
 		});
 
 		Object.defineProperty(this, 'job', {
-			get: function(){ return this._job },
+			get: function(){ return this.costume || this._job },
 			set: UpdateBody
 		});
 

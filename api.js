@@ -101,10 +101,22 @@
 	 *
 	 * Supported value:
 	 *    a) YYYYMMDD     (number: date you want)
-	 *    b) 'auto'       (detect packetver from client and packets received from server)
 	 *    c) 'executable' (detect packetver from executable compilation date)
 	 */
 	ROBrowser.prototype.packetver    = 'auto';
+
+
+	/**
+	 * @var {number} character info block size
+	 * If not set, it will try to guess the type based on the packetver and the block total length
+	 */
+	ROBrowser.prototype.charBlockSize = 0;
+
+
+	/**
+	 * @var {string} client hash to send to server
+	 */
+	ROBrowser.prototype.clientHash = null;
 
 
 	/**
@@ -205,13 +217,30 @@
 
 
 	/**
+	 * @var {Array} list of extensions you want to use for your BGMs.
+	 * It will test each extensions until there is one it can read.
+	 *
+	 * Examples: ['ogg', 'mp4', 'mp3']
+	 * Will try to see if it can load '.ogg' audio file, if it fail, will try to see if it can load .mp4, etc.
+	 */
+	ROBrowser.prototype.BGMFileExtension = ['mp3'];
+
+
+	/**
+	 * @var {Object} Define plugin to execute
+	 * It will test each extensions until there is one it can read.
+	 */
+	ROBrowser.prototype.plugins = {};
+
+
+	/**
 	 * @var {string} roBrowser api window path
 	 */
 	ROBrowser.prototype.baseUrl = (function(){
 		var script = document.getElementsByTagName('script');
 		return script[ script.length -1 ].src
-			.replace(/\/build\/[^\/]+\.js.*/, '/api.js') // redirect compiled script
-			.replace(/\/src\/.*/, '/api.js');           // fix error with cache
+			.replace(/\/[^\/]+\.js.*/, '/api.js') // redirect compiled script
+			.replace(/\/src\/.*/, '/api.js');     // fix error with cache (FF)
 	})().replace('.js', '.html');
 
 
@@ -312,8 +341,8 @@
 		}
 
 		// Start waiting for robrowser
-		this._Interval  = setInterval( WaitForInitialization.bind(this), 100 );
-		window.addEventListener( 'message', OnMessage, false );
+		this._Interval = setInterval( WaitForInitialization.bind(this), 100 );
+		window.addEventListener('message', OnMessage, false );
 	};
 
 
@@ -324,19 +353,23 @@
 	function WaitForInitialization()
 	{
 		this._APP.postMessage({
-			application:    this.application,
-			servers:        this.servers,
-			grfList:        this.grfList,
-			remoteClient:   this.remoteClient,
-			packetver:      this.packetver,
-			development:    this.development,
-			api:            this.api,
-			socketProxy:    this.socketProxy,
-			packetKeys:     this.packetKeys,
-			skipServerList: this.skipServerList,
-			skipIntro:      this.skipIntro,
-			autoLogin:      this.autoLogin,
-			version:        this.version,
+			application:      this.application,
+			servers:          this.servers,
+			grfList:          this.grfList,
+			remoteClient:     this.remoteClient,
+			packetver:        this.packetver,
+			development:      this.development,
+			api:              this.api,
+			socketProxy:      this.socketProxy,
+			packetKeys:       this.packetKeys,
+			skipServerList:   this.skipServerList,
+			skipIntro:        this.skipIntro,
+			autoLogin:        this.autoLogin,
+			version:          this.version,
+			clientHash:       this.clientHash,
+			plugins:          this.plugins,
+			charBlockSize:    this.charBlockSize,
+			BGMFileExtension: this.BGMFileExtension
 		}, '*');
 	}
 
@@ -345,5 +378,4 @@
 	 * Export
 	 */
 	window.ROBrowser = ROBrowser;
-
 })();

@@ -7,10 +7,17 @@
  *
  * @author Vincent Thibault
  */
-define(['Utils/WebGL', 'Utils/gl-matrix', 'DB/SkillId', 'Core/Client', 'Renderer/Effects', 'Renderer/Map/Altitude'],
-function(      WebGL,         glMatrix,       SkillId,        Client,            Effects,                Altitude) {
+define(function( require ) {
 
 	'use strict';
+
+
+	// Load dependencies
+	var WebGL    = require('Utils/WebGL');
+	var glMatrix = require('Utils/gl-matrix');
+	var SkillId  = require('DB/Skills/SkillConst');
+	var Client   = require('Core/Client');
+	var Altitude = require('Renderer/Map/Altitude');
 
 
 	/**
@@ -173,7 +180,6 @@ function(      WebGL,         glMatrix,       SkillId,        Client,           
 	 */
 	MagicTarget.prototype.render = function render( gl, tick )
 	{
-		var uniform   = _program.uniform;
 		var attribute = _program.attribute;
 
 		gl.bindBuffer( gl.ARRAY_BUFFER, this.buffer );

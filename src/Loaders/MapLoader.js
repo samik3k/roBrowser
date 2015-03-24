@@ -67,6 +67,11 @@ define( ['Core/FileManager'], function( FileManager )
 	 */
 	Loader.prototype._next = function next()
 	{
+		// Possible problem with setTimeout
+		if (!this.list.length) {
+			return;
+		}
+
 		var filename = this.list.shift();
 		FileManager.load( filename, function(data) {
 
@@ -87,7 +92,8 @@ define( ['Core/FileManager'], function( FileManager )
 
 			// Continue the queue
 			if (this.list.length) {
-				if ((++this.constructor.count) % 100 === 0) {
+				// To fix "too much recursion" on Firefox
+				if ((++Loader.count) % 50 === 0) {
 					setTimeout( this._next.bind(this), 4);
 				}
 				else {
@@ -164,6 +170,15 @@ define( ['Core/FileManager'], function( FileManager )
 		var loader = this;
 		var world;
 
+		//  Get file path (if it's a copy of a file)
+		function getFilePath( path ) {
+			if (path in FileManager.filesAlias) {
+				return FileManager.filesAlias[path];
+			}
+
+			return path;
+		}
+
 		// loading world
 		function onWorldReady(resourceWorld) {
 			if (!resourceWorld) {
@@ -175,7 +190,7 @@ define( ['Core/FileManager'], function( FileManager )
 			loader.setProgress( 1 );
 
 			// Load Altitude
-			FileManager.load('data\\' + world.files.gat, onAltitudeReady);
+			FileManager.load('data\\' + getFilePath(world.files.gat), onAltitudeReady);
 		}
 
 		// Loading altitude
@@ -188,7 +203,7 @@ define( ['Core/FileManager'], function( FileManager )
 			loader.setProgress( 2 );
 			loader.ondata('MAP_ALTITUDE', altitude.compile());
 
-			FileManager.load('data\\' + world.files.gnd, onGroundReady);
+			FileManager.load('data\\' + getFilePath(world.files.gnd), onGroundReady);
 		}
 
 		// Load ground
@@ -226,7 +241,7 @@ define( ['Core/FileManager'], function( FileManager )
 		}
 
 		// Start loading World Resource file
-		FileManager.load('data\\' + mapname, onWorldReady);
+		FileManager.load('data\\' + getFilePath(mapname), onWorldReady);
 	};
 
 

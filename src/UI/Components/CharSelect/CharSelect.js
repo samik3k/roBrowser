@@ -16,6 +16,7 @@ define(function(require)
 	 * Dependencies
 	 */
 	var DB                 = require('DB/DBManager');
+	var MonsterTable       = require('DB/Monsters/MonsterTable');
 	var Preferences        = require('Core/Preferences');
 	var KEYS               = require('Controls/KeyEventHandler');
 	var Renderer           = require('Renderer/Renderer');
@@ -207,7 +208,7 @@ define(function(require)
 	 */
 	CharSelect.setInfo = function setInfo( pkt )
 	{
-		_maxSlots           = pkt.TotalSlotNum || 9; // default 9 ?
+		_maxSlots           = Math.floor((pkt.TotalSlotNum + pkt.PremiumStartSlot) || 9); // default 9 ?
 		_sex                = pkt.sex;
 		_slots.length       = 0;
 		_entitySlots.length = 0;
@@ -283,7 +284,10 @@ define(function(require)
 	 */
 	CharSelect.addCharacter = function addCharacter( character )
 	{
-		character.sex = _sex;
+		if (!('sex' in character) || character.sex === 99) {
+			character.sex = _sex;
+		}
+
 		_list.push( character );
 		_slots[ character.CharNum ] = character;
 
@@ -429,7 +433,7 @@ define(function(require)
 
 		var info = _slots[_index];
 		$charinfo.find('.name').text( info.name );
-		$charinfo.find('.job').text( DB.mobname[info.job] || '' );
+		$charinfo.find('.job').text( MonsterTable[info.job] || '' );
 		$charinfo.find('.lvl').text( info.level );
 		$charinfo.find('.exp').text( info.exp );
 		$charinfo.find('.hp').text( info.hp );

@@ -8,19 +8,18 @@
  *
  * @author Vincent Thibault
  */
-define([
-	'Utils/WebGL', 'Core/Client',
-	'Loaders/Sprite',
-	'Renderer/Renderer', 'Renderer/SpriteRenderer',
-	'Preferences/Map'],
-function(
-	WebGL, Client,
-	Sprite,
-	Renderer, SpriteRenderer,
-	MapPreferences
-)
+define(function( require )
 {
 	'use strict';
+
+
+	// Load dependencies
+	var WebGL          = require('Utils/WebGL');
+	var Client         = require('Core/Client');
+	var Sprite         = require('Loaders/Sprite');
+	var Renderer       = require('Renderer/Renderer');
+	var SpriteRenderer = require('Renderer/SpriteRenderer');
+	var MapPreferences  = require('Preferences/Map');
 
 
 	/**
@@ -48,7 +47,8 @@ function(
 		DAMAGE:      1 << 2,
 		ENEMY:       1 << 3,
 		COMBO:       1 << 4,
-		COMBO_FINAL: 1 << 5
+		COMBO_FINAL: 1 << 5,
+		SP:          1 << 6
 	};
 
 
@@ -135,6 +135,9 @@ function(
 			return;
 		}
 
+		// Can't render floating points
+		damage = Math.floor(damage);
+
 		var PADDING = 2;
 		var i, count, start_x, start_y;
 		var frame;
@@ -161,8 +164,12 @@ function(
 		obj.start    = tick;
 		obj.entity   = entity;
 
-		// Heal
-		if (obj.type & Damage.TYPE.HEAL) {
+		if (obj.type & Damage.TYPE.SP) {
+			obj.color[0] = 0.13;
+			obj.color[1] = 0.19;
+			obj.color[2] = 0.75;
+		}
+		else if (obj.type & Damage.TYPE.HEAL) {
 			// green
 			obj.color[1] = 1.0;
 		}
@@ -351,8 +358,8 @@ function(
 				SpriteRenderer.position[2] = damage.entity.position[2] + 3.5 + perc * 7;
 			}
 
-			SpriteRenderer.size[0] = (damage.width  * size) / 35;
-			SpriteRenderer.size[1] = (damage.height * size) / 35;
+			SpriteRenderer.size[0] = damage.width  * size;
+			SpriteRenderer.size[1] = damage.height * size;
 			damage.color[3]        = 1.0 - perc;
 
 			SpriteRenderer.color.set( damage.color );

@@ -30,22 +30,23 @@ require({
 		jquery: 'Vendors/jquery-1.9.1'
 	}
 },
-	['Utils/Queue', 'Audio/BGM',
-	 'Core/Client', 'Core/Thread',
+	['Utils/Queue',
+	 'Core/Configs', 'Core/Client', 'Core/Thread',
+	 'Audio/BGM',
 	 'Engine/SessionStorage',
 	 'Renderer/Renderer', 'Renderer/MapRenderer', 'Renderer/Camera', 'Renderer/Map/Altitude', 'Renderer/Entity/Entity',
 	 'Controls/MouseEventHandler', 'Controls/MapControl',
 	 'UI/Components/Intro/Intro'],
 
 function(
-	Queue, BGM,
-	Client, Thread,
+	Queue,
+	Configs, Client, Thread,
+	BGM,
 	Session,
 	Renderer, MapRenderer, Camera, Altitude, Entity,
 	Mouse, MapControl,
 	Intro
 ) {
-
 	'use strict';
 
 
@@ -80,7 +81,7 @@ function(
 		var q         = new Queue();
 
 		// Resources sharing
-		if (ROConfig.API) {
+		if (Configs.get('API')) {
 			q.add(function(){
 				function onAPIMessage( event ) {
 					if (typeof event.data !== 'object') {
@@ -89,6 +90,7 @@ function(
 
 					switch (event.data.type) {
 						case 'init':
+							BGM.setAvailableExtensions(['mp3']);
 							Thread.delegate( event.source, event.origin );
 							Thread.init();
 							Renderer.init();
@@ -128,6 +130,7 @@ function(
 		else {
 			// Waiting for the Thread to be ready
 			q.add(function(){
+				BGM.setAvailableExtensions(['mp3']);
 				Thread.hook('THREAD_READY', q.next );
 				Thread.init();
 			});
@@ -154,10 +157,11 @@ function(
 			Intro.remove();
 
 			MapRenderer.onLoad = MapViewer.onLoad;
-			MapControl.call(MapViewer);
+			MapControl.init();
+			MapControl.onRequestWalk = MapViewer.onMouseDown;
 
 			// Direct access from API
-			if (ROConfig.API) {
+			if (Configs.get('API')) {
 				ready     = true;
 				maptoload = maptoload || location.hash.substr(1).replace('data/','');
 				MapRenderer.setMap( maptoload );
@@ -200,7 +204,7 @@ function(
 	{
 		BGM.stop();
 
-		if (!ROConfig.API) {
+		if (!Configs.get('API')) {
 			document.body.appendChild( MapViewer.dropDown );
 		}
 
@@ -227,13 +231,6 @@ function(
 			MapViewer.spot.position[2] = Mouse.world.z;
 		}
 	};
-
-
-	/**
-	 * Mouse up on canvas
-	 * Nothing to do here
-	 */
-	MapViewer.onMouseUp = function OnMouseUp(){};
 
 
 	/**

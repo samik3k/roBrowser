@@ -7,58 +7,96 @@
  *
  * @author Vincent Thibault
  */
-define([
-	'Utils/jquery',
-	'DB/DBManager',
-	'UI/CursorManager',
-	'UI/Components/Inventory/Inventory',
-	'UI/Components/InputBox/InputBox',
-	'UI/Components/ChatBox/ChatBox',
-	'UI/Components/Equipment/Equipment',
-	'Controls/KeyEventHandler', 'Controls/MouseEventHandler', 'Controls/ScreenShot',
-	'Renderer/Renderer', 'Renderer/Camera', 'Renderer/EntityManager',
-	'Engine/SessionStorage',
-	'Preferences/Controls'
-],
-function(
-	jQuery,
-	DB,
-	Cursor,
-	Inventory,
-	InputBox,
-	ChatBox,
-	Equipment,
-	KEYS, Mouse, ScreenShot,
-	Renderer, Camera, EntityManager,
-	Session,
-	Preferences
-)
+define(function( require )
 {
 	'use strict';
 
 
+	// Load dependencies
+	var jQuery        = require('Utils/jquery');
+	var DB            = require('DB/DBManager');
+	var UIManager     = require('UI/UIManager');
+	var Cursor        = require('UI/CursorManager');
+	var InputBox      = require('UI/Components/InputBox/InputBox');
+	var ChatBox       = require('UI/Components/ChatBox/ChatBox');
+	var Equipment     = require('UI/Components/Equipment/Equipment');
+	var Mouse         = require('Controls/MouseEventHandler');
+	var Mobile        = require('Core/Mobile');
+	var Renderer      = require('Renderer/Renderer');
+	var Camera        = require('Renderer/Camera');
+	var EntityManager = require('Renderer/EntityManager');
+	var Session       = require('Engine/SessionStorage');
+	var Preferences   = require('Preferences/Controls');
+
+	require('Controls/ScreenShot');
+
+
 	/**
-	 * Moving the mouse on the scene
+	 * @var {int16[2]} screen position
 	 */
-	function OnMouseMove( event )
+	var _rightClickPosition = new Int16Array(2);
+
+
+	/**
+	 * @namespace MapControl
+	 */
+	var MapControl = {};
+
+
+	/**
+	 * Callback used when requesting to move somewhere
+	 */
+	MapControl.onRequestWalk = function(){};
+
+
+	/**
+	 * Callback used when request to stop move
+	 */
+	MapControl.onRequestStopWalk = function(){};
+
+
+	/**
+	 * Callback used when dropping an item to the map
+	 */
+	MapControl.onRequestDropItem = function(){};
+
+
+	/**
+	 * Initializing the controller
+	 */
+	MapControl.init = function init()
 	{
-		Mouse.screen.x = event.pageX;
-		Mouse.screen.y = event.pageY;
-	}
+		Mobile.init();
+		Mobile.onTouchStart = onMouseDown.bind(this);
+		Mobile.onTouchEnd   = onMouseUp.bind(this);
+
+		// Attach events
+		jQuery( Renderer.canvas )
+			.on('mousewheel DOMMouseScroll', onMouseWheel)
+			.on('dragover',                  onDragOver )
+			.on('drop',                      onDrop.bind(this));
+
+		jQuery(window)
+			.on('contextmenu',     function(){ return false; })
+			.on('mousedown.map',   onMouseDown.bind(this))
+			.on('mouseup.map',     onMouseUp.bind(this));
+	};
 
 
 	/**
 	 * What to do when clicking on the map ?
 	 */
-	function OnMouseDown( event )
+	function onMouseDown( event )
 	{
-		Session.moveTarget = null;
+		var action = event && event.which || 1;
+
+		Session.moveAction = null;
 
 		if (!Mouse.intersect) {
 			return;
 		}
 
-		switch (event.which) {
+		switch (action) {
 
 			// Left click
 			case 1:
@@ -84,11 +122,16 @@ function(
 				}
 
 				// Start walking
-				this.onMouseDown();
+				if (this.onRequestWalk) {
+					this.onRequestWalk();
+				}
 				break;
 
 			// Right Click
 			case 3:
+				_rightClickPosition[0] = Mouse.screen.x;
+				_rightClickPosition[1] = Mouse.screen.y;
+
 				Cursor.setType( Cursor.ACTION.ROTATE );
 				Camera.rotate( true );
 				break;
@@ -99,19 +142,22 @@ function(
 	/**
 	 * What to do when stop clicking on the map ?
 	 */
-	function OnMouseUp( event )
+	function onMouseUp( event )
 	{
+		var entity;
+		var action = event && event.which || 1;
+
 		// Not rendering yet
 		if (!Mouse.intersect) {
 			return;
 		}
 
-		switch (event.which) {
+		switch (action) {
 
 			// Left click
 			case 1:
 				// Remove entity picking ?
-				var entity = EntityManager.getFocusEntity();
+				entity = EntityManager.getFocusEntity();
 
 				if (entity) {
 					entity.onMouseUp();
@@ -124,13 +170,25 @@ function(
 				}
 
 				// stop walking
-				this.onMouseUp();
+				if (this.onRequestStopWalk) {
+					this.onRequestStopWalk();
+				}
 				break;
 
 			// Right Click
 			case 3:
 				Cursor.setType( Cursor.ACTION.DEFAULT );
 				Camera.rotate( false );
+
+				// Seems like it's how the official client handle the contextmenu
+				// Just check for the same position on mousedown and mouseup
+				if (_rightClickPosition[0] === Mouse.screen.x && _rightClickPosition[1] === Mouse.screen.y) {
+					entity = EntityManager.getOverEntity();
+
+					if (entity && entity !== Session.Entity) {
+						entity.onContextMenu();
+					}
+				}
 				break;
 		}
 	}
@@ -139,7 +197,7 @@ function(
 	/**
 	 * Zoom feature
 	 */
-	function OnMouseWheel( event )
+	function onMouseWheel( event )
 	{
 		// Zooming on the scene
 		// Cross browser delta
@@ -162,7 +220,7 @@ function(
 	/**
 	 * Allow dropping data
 	 */
-	function OnDragOver(event)
+	function onDragOver(event)
 	{
 		event.stopImmediatePropagation();
 		return false;
@@ -173,7 +231,7 @@ function(
 	/**
 	 * Drop items to the map
 	 */
-	function OnDrop( event )
+	function onDrop( event )
 	{
 		var item, data;
 		var MapEngine = this;
@@ -185,61 +243,60 @@ function(
 		}
 		catch(e) {}
 
-		// Just support items for now ?
-		if (data && data.type === 'item' && data.from === 'inventory') {
-
-			// Can't drop an item on map if Equipment window is open
-			if (Equipment.ui.is(':visible')) {
-				ChatBox.addText(
-					DB.getMessage(189),
-					ChatBox.TYPE.ERROR
-				);
-				return;
-			}
-
-			item = data.data;
-
-			// Have to specify how much
-			if (item.count > 1) {
-				InputBox.append();
-				InputBox.setType('number', false, item.count);
-				InputBox.onSubmitRequest = function OnSubmitRequest( count ) {
-					InputBox.remove();
-					MapEngine.onDropItem(
-						item.index,
-						parseInt(count, 10 )
-					);
-				};
-			}
-
-			// Only one, don't have to specify
-			else {
-				MapEngine.onDropItem( item.index, 1 );
-			}
+		// Stop default behavior
+		event.stopImmediatePropagation();
+		if (!data) {
+			return false;
 		}
 
-		event.stopImmediatePropagation();
+		// Hacky way to trigger mouseleave (mouseleave isn't
+		// triggered when dragging an object).
+		// ondragleave event is not relyable to do it (not working as intended)
+		if (data.from) {
+			UIManager.getComponent(data.from).ui.trigger('mouseleave');
+		}
+
+		// Just support items ?
+		if (data.type !== 'item' || data.from !== 'Inventory') {
+			return false;
+		}
+
+		// Can't drop an item on map if Equipment window is open
+		if (Equipment.ui.is(':visible')) {
+			ChatBox.addText(
+				DB.getMessage(189),
+				ChatBox.TYPE.ERROR
+			);
+			return false;
+		}
+
+		item = data.data;
+
+		// Have to specify how much
+		if (item.count > 1) {
+			InputBox.append();
+			InputBox.setType('number', false, item.count);
+			InputBox.onSubmitRequest = function onSubmitRequest( count ) {
+				InputBox.remove();
+				MapControl.onRequestDropItem(
+					item.index,
+					parseInt(count, 10 )
+				);
+			};
+		}
+
+		// Only one, don't have to specify
+		else {
+			MapControl.onRequestDropItem( item.index, 1 );
+		}
+
 		return false;
 	}
-
 
 
 
 	/**
 	 *  Exports
 	 */
-	return function Initialize()
-	{
-		// Attach events
-		jQuery( Renderer.canvas )
-			.on('mousewheel DOMMouseScroll', OnMouseWheel)
-			.on('dragover', OnDragOver )
-			.on('drop', OnDrop.bind(this));
-
-		jQuery(window)
-			.on('contextmenu', function(){ return false; })
-			.mousemove( OnMouseMove )
-			.mousedown( OnMouseDown.bind(this) )
-			.mouseup( OnMouseUp.bind(this) );
-	};
+	return MapControl;
 });
